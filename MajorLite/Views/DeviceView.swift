@@ -235,7 +235,7 @@ private struct HeroCard: View {
                     // przejac styl ze srodowiska i zwinac sie do samej ikony.
                     HStack(spacing: 5) {
                         Image(systemName: "speaker.wave.2.fill")
-                        Text("\(v)")
+                        Text(store.volumeLimit.map { "\(v)/\($0)" } ?? "\(v)")
                     }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

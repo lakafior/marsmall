@@ -73,6 +73,16 @@ enum Race {
     /// Nothing in this app sends either; the definition is kept for the record.
     static let PEQ_BANDS: UInt16 = 0x0E2B
 
+    /// Selects the active PEQ group. Request `[module: u16][value: u8]`.
+    ///
+    /// The official app ends every custom-EQ edit with module 0 (PEQGroup) set to
+    /// **6** — not slot 1 or 2, but a separate group that holds the custom bands.
+    /// Sent with module 0 only; nothing else from the setter side of the catalogue
+    /// is used.
+    static let SET_MMI_ENUM: UInt16 = 0x0900
+    static let modulePEQGroup: UInt16 = 0x0000
+    static let peqGroupCustom: UInt8 = 6
+
     /// Turns firmware-pushed notifications on. Request `[on_off]`.
     static let ENABLE_FW_NOTIFY: UInt16 = 0x0006
 

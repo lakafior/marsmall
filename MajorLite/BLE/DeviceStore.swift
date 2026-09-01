@@ -30,6 +30,8 @@ final class DeviceStore {
     var nowPlaying: [Int: String] = [:]
     /// Potwierdzone: sledzi pokretlo glosnosci.
     var volume: Int?
+    /// Maksymalna glosnosc (charakterystyka VOLUME_LIMIT). Na Major V 32.
+    var volumeLimit: Int?
     /// Aktywne wejscie. Bluetooth = 0, AUX = 2 (zmierzone).
     var audioSource: MajorV.AudioSource?
     /// Czy cokolwiek gra. Zmierzone: 01 gra, 00 pauza.
@@ -220,6 +222,10 @@ final class DeviceStore {
         if let d = await ble.read(MajorV.Char.volume.uuid), let v = d.first {
             volume = Int(v)
         }
+        if volumeLimit == nil, let d = await ble.read(MajorV.Char.volumeLimit.uuid),
+           let v = d.first, v > 0 {
+            volumeLimit = Int(v)
+        }
         if let d = await ble.read(MajorV.Char.audioControl.uuid) {
             isPlaying = Decode.isPlaying(d)
         }
@@ -293,6 +299,28 @@ final class DeviceStore {
         }
     }
 
+    /// Probuje wartosci presetu spoza zmierzonego zakresu 0...5.
+    /// Ten sam zapis co zwykly preset, tylko inna liczba - jesli firmware jej nie
+    /// zna, odrzuci ja albo zignoruje, a odczyt kontrolny to pokaze.
+    func tryPreset(_ raw: UInt8) async {
+        let payload = Data([0x01, 0x01, raw])
+        lastError = nil
+        do {
+            try await ble.write(payload, to: MajorV.Char.equaliser.uuid)
+        } catch {
+            lastError = error.localizedDescription
+        }
+        if let after = await ble.read(MajorV.Char.equaliser.uuid) {
+            if after.last != raw {
+                lastError = "The firmware kept preset \(after.last ?? 0) — \(raw) was rejected."
+            }
+            if let eq = Decode.equaliser(after) {
+                equaliserSlot = eq.slot
+                equaliserPreset = eq.preset
+            }
+        }
+    }
+
     /// Przelacza aktywny slot. Ta sama charakterystyka co preset, inne pole.
     func setEqualiserSlot(_ slot: Int) async {
         guard (1...2).contains(slot) else { return }
@@ -334,24 +362,45 @@ final class DeviceStore {
         didSet { UserDefaults.standard.set(customGains, forKey: "customGains") }
     }
 
-    /// Wysyla biezace ustawienie pasm. Write Command bez odpowiedzi - tak samo
-    /// jak robi to oficjalna aplikacja.
+    /// Wysyla pasma i aktywuje grupe PEQ, w ktorej siedzi wlasny korektor.
+    ///
+    /// Kolejnosc odtworzona z podsluchu: oficjalna aplikacja przy ruchu suwakiem
+    /// wysyla same pasma, a grupe 6 ustawia po zakonczeniu gestu. Zeby cokolwiek
+    /// bylo slychac, w slocie 2 musi byc wybrany preset Custom - to on wlacza
+    /// te grupe po stronie firmware.
     @discardableResult
-    func applyCustomEqualiser() async -> Bool {
+    func applyCustomEqualiser(activateGroup: Bool = true) async -> Bool {
         guard raceReady else {
             lastError = "The Airoha channel is not open."
             return false
         }
-        let packet = Race.packet(id: Race.PEQ_BANDS,
-                                 payload: [UInt8](EqualiserMath.payload(for: customGains)))
         do {
-            try await ble.write(packet, to: Race.writeCharacteristic,
+            let bands = Race.packet(id: Race.PEQ_BANDS,
+                                    payload: [UInt8](EqualiserMath.payload(for: customGains)))
+            try await ble.write(bands, to: Race.writeCharacteristic,
                                 in: Race.service, withoutResponse: true)
+
+            if activateGroup {
+                try? await Task.sleep(for: .milliseconds(60))
+                let group = Race.packet(id: Race.SET_MMI_ENUM,
+                                        payload: [UInt8(Race.modulePEQGroup & 0xFF),
+                                                  UInt8(Race.modulePEQGroup >> 8),
+                                                  Race.peqGroupCustom])
+                try await ble.write(group, to: Race.writeCharacteristic,
+                                    in: Race.service, withoutResponse: true)
+            }
             return true
         } catch {
             lastError = error.localizedDescription
             return false
         }
+    }
+
+    /// Ustawia slot 2 na Custom i czyni go aktywnym - bez tego firmware odtwarza
+    /// inna grupe PEQ i wlasne pasma nie maja jak zabrzmiec.
+    func prepareForCustomEqualiser() async {
+        if equaliserPreset != .custom { await setEqualiserPreset(.custom) }
+        if equaliserSlot != 2 { await setEqualiserSlot(2) }
     }
 
     func resetCustomEqualiser() async {

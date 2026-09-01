@@ -58,10 +58,46 @@ struct EqualiserView: View {
                     .buttonStyle(.plain)
                     .disabled(busy)
                 }
+
+                NavigationLink {
+                    CustomEqualiserView()
+                } label: {
+                    Label("Custom bands", systemImage: "slider.vertical.3")
+                }
             } header: {
                 Text("Slot 2")
             } footer: {
-                Text("Slot 2 can hold any of these, including Marshall's own tuning. The five Custom bands still have to be set in the official Marshall app — see the note in EqualiserMath.swift for why.")
+                Text("Slot 2 can hold any of these, including Marshall's own tuning. Custom gives you five bands to set yourself — still experimental, see the screen for what is and is not known.")
+            }
+            Section {
+                ForEach(6...11, id: \.self) { raw in
+                    Button {
+                        Task { busy = true; await store.tryPreset(UInt8(raw)); busy = false }
+                    } label: {
+                        HStack {
+                            Text("Preset \(raw)")
+                            Spacer()
+                            Text(String(format: "0x%02X", raw))
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.tertiary)
+                        }
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(busy)
+                }
+            } header: {
+                Text("Beyond the official list")
+            } footer: {
+                Text("""
+                A teardown of the Android Marshall app lists twelve preset ids where \
+                this model only offers six, so the firmware may carry more. The \
+                numbering there does not match what was measured here, so these are \
+                shown as plain numbers rather than guessed names.
+
+                Tapping one writes it and reads back. If the value does not stick, \
+                the firmware rejected it and nothing changed.
+                """)
             }
         }
         .navigationTitle("Equaliser")

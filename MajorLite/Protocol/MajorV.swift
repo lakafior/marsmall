@@ -60,11 +60,14 @@ enum MajorV {
         ///
         case audioSource = "0000001B"
 
-        /// Exposed by the device but **absent from the official app entirely** —
-        /// there is no such UUID literal anywhere in its binary, so there is no
-        /// name to recover and no reference behaviour to observe.
-        case unknown01 = "00000001"
-        case unknown08 = "00000008"
+        /// Named by an independent teardown of the **Android** Marshall app
+        /// (github.com/c0ffee-audio/marshall-protocol) — these two have no UUID
+        /// literal in the iOS binary at all, so they could not be recovered here.
+        /// That teardown agrees with every one of our own measured names, which is
+        /// why these two are taken on trust; neither is verified on Major V.
+        case bluetoothClassicPairingMode = "00000001"
+        /// Reads `0x20` = 32, and the volume characteristic runs 0…32. Consistent.
+        case volumeLimit = "00000008"
         /// Notify-only. Most likely `actionButtonEvent`, but the firmware rejects
         /// every attempt to subscribe (ATT 0x0D on the CCCD write), so it is
         /// unreachable from any iOS app — including Marshall's own.
@@ -109,6 +112,8 @@ enum MajorV {
             case .audioControl: return "playback state"
             case .audioSource: return "audioSource"
             case .bluetoothConnectionControl: return "bluetoothConnectionControl?"
+            case .bluetoothClassicPairingMode: return "pairing mode?"
+            case .volumeLimit: return "volume limit"
             default: return nil
             }
         }
