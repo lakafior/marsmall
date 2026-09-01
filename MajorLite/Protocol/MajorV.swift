@@ -43,10 +43,28 @@ enum MajorV {
         /// Confirmed — tracks the control knob.
         case volume = "00000007"
 
-        // Present on the device but not yet identified.
+        /// CONFIRMED. Playback state: `01` while playing, `00` when paused.
+        /// Toggling pause with nothing else connected moves it, so it tracks
+        /// playback rather than the input.
+        ///
+        /// Note the app binary lists the neighbouring states as
+        /// `playing, paused, stopped, unknown`, which would put playing at 0 —
+        /// the measurement says otherwise, so declaration order is **not** the
+        /// wire value here, unlike everywhere else in this protocol.
+        case audioControl = "00000009"
+        /// CONFIRMED. Which input is currently playing. The app carries labels for BLUETOOTH,
+        /// AUX, USB-C, RCA and HDMI — the last two belong to Marshall's speakers,
+        /// which share this protocol. It also carries the note "Bluetooth audio is
+        /// disconnected while connected via 3.5 mm cable", so AUX is a real source
+        /// that takes over from Bluetooth.
+        ///
+        case audioSource = "0000001B"
+
+        /// Exposed by the device but **absent from the official app entirely** —
+        /// there is no such UUID literal anywhere in its binary, so there is no
+        /// name to recover and no reference behaviour to observe.
         case unknown01 = "00000001"
-        case unknown07 = "00000008"
-        case unknown09 = "00000009"
+        case unknown08 = "00000008"
         /// Notify-only. Most likely `actionButtonEvent`, but the firmware rejects
         /// every attempt to subscribe (ATT 0x0D on the CCCD write), so it is
         /// unreachable from any iOS app — including Marshall's own.
@@ -56,9 +74,9 @@ enum MajorV {
         /// Every other byte is constant.
         case equaliser = "00000017"
 
-        case unknown1B = "0000001B"
-        /// Write + notify, no read. Looks like a control point. Left alone.
-        case controlPoint = "00000034"
+        /// Recovered from the app binary. Write + notify, no read — a control point
+        /// for the paired-device list: connect, disconnect, forget. Multipoint.
+        case bluetoothConnectionControl = "00000034"
 
         var uuid: CBUUID { CBUUID(string: rawValue + zoundSuffix) }
 
@@ -88,12 +106,15 @@ enum MajorV {
             case .volume: return "volume"
             case .actionButtonEvent: return "button events (unreachable)"
             case .equaliser: return "equaliser"
-            case .controlPoint: return "control point"
+            case .audioControl: return "playback state"
+            case .audioSource: return "audioSource"
+            case .bluetoothConnectionControl: return "bluetoothConnectionControl?"
             default: return nil
             }
         }
         switch uuid.uuidString.uppercased() {
         case "2A19": return "battery level"
+        case "2BED": return "battery status (SIG)"
         case "2A24": return "model"
         case "2A25": return "serial"
         case "2A26": return "firmware"
@@ -105,7 +126,11 @@ enum MajorV {
 
     /// Standard SIG characteristics we read for the info panel.
     enum Info {
+        /// Zawsze zwraca `00` na Major V - firmware nie wypelnia tej charakterystyki
+        /// przy podlaczonym hoscie audio. Sprawdzone na obu wpisach urzadzenia
+        /// i po naprawie wyboru peryferala. Procent bierzemy z kanalu RACE.
         static let batteryLevel = CBUUID(string: "2A19")
+        static let batteryLevelStatus = CBUUID(string: "2BED")
         static let modelNumber = CBUUID(string: "2A24")
         static let serialNumber = CBUUID(string: "2A25")
         static let firmwareRevision = CBUUID(string: "2A26")
@@ -193,6 +218,101 @@ enum MajorV {
         }
 
         var hex: String { String(format: "0x%02X", rawValue) }
+    }
+
+    // MARK: - Audio source
+
+    /// Which input is playing. Values come from the protocol-level enum in the app
+    /// binary, which is wider than the player screen's list because the same
+    /// protocol serves Marshall's speakers and soundbars.
+    ///
+    /// Two measured, two for two: Bluetooth reads `00`, and plugging a 3.5 mm
+    /// cable into an analogue source moved it to `02`.
+    enum AudioSource: UInt8, CaseIterable, Identifiable {
+        case bluetooth = 0
+        case wifi = 1
+        case aux = 2
+        case rca = 3
+        case optical = 4
+        case hdmi = 5
+        case bleAudio = 6
+        case usbc = 7
+        case bleAudioBroadcast = 8
+        case eArcHdmi = 9
+        case error = 10
+
+        var id: UInt8 { rawValue }
+
+        var title: String {
+            switch self {
+            case .bluetooth: "Bluetooth"
+            case .wifi: "Wi-Fi"
+            case .aux: "AUX"
+            case .rca: "RCA"
+            case .optical: "Optical"
+            case .hdmi: "HDMI"
+            case .bleAudio: "LE Audio"
+            case .usbc: "USB-C"
+            case .bleAudioBroadcast: "Auracast"
+            case .eArcHdmi: "eARC"
+            case .error: "Error"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .bluetooth: "wave.3.right"
+            case .aux: "cable.connector"
+            case .usbc: "cable.connector.horizontal"
+            case .bleAudio, .bleAudioBroadcast: "dot.radiowaves.left.and.right"
+            default: "waveform"
+            }
+        }
+    }
+
+    // MARK: - Battery status
+
+    /// Bluetooth SIG "Battery Level Status" (`2BED`) — richer than a plain
+    /// percentage and, unlike the Zound characteristics, it supports notifications.
+    ///
+    /// Layout: `[flags: u8][power state: u16le]` plus optional fields the flags
+    /// select. Major V sends flags `0x00`, so only the power state is present.
+    ///
+    /// Confirmed by plugging in a USB-C cable: `00C100` became `00A302`, which
+    /// decodes exactly as "wired power connected, charging, constant current".
+    struct BatteryStatus: Equatable {
+        var present: Bool
+        var wiredPower: Bool
+        var wirelessPower: Bool
+        var charging: Bool
+        var level: Level
+        var chargingType: String?
+
+        enum Level: String { case unknown, good, low, critical }
+
+        init?(_ d: Data) {
+            guard d.count >= 3 else { return nil }
+            let state = UInt16(d[d.startIndex + 1]) | UInt16(d[d.startIndex + 2]) << 8
+            present = state & 1 == 1
+            wiredPower = (state >> 1) & 3 == 1
+            wirelessPower = (state >> 3) & 3 == 1
+            charging = (state >> 5) & 3 == 1
+            level = [Level.unknown, .good, .low, .critical][Int((state >> 7) & 3)]
+            chargingType = [nil, "constant current", "constant voltage",
+                            "trickle", "float"][safe: Int((state >> 9) & 7)] ?? nil
+        }
+
+        var summary: String? {
+            if charging {
+                let how = wirelessPower ? "wirelessly" : "over USB-C"
+                return "Charging \(how)"
+            }
+            switch level {
+            case .low: return "Battery low"
+            case .critical: return "Battery critical"
+            default: return nil
+            }
+        }
     }
 
     // MARK: - Equaliser

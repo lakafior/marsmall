@@ -24,15 +24,22 @@ final class DeviceStore {
     var nowPlaying: [Int: String] = [:]
     /// Potwierdzone: sledzi pokretlo glosnosci.
     var volume: Int?
+    /// Aktywne wejscie. Bluetooth = 0, AUX = 2 (zmierzone).
+    var audioSource: MajorV.AudioSource?
+    /// Czy cokolwiek gra. Zmierzone: 01 gra, 00 pauza.
+    var isPlaying: Bool?
     /// Aktywny slot korektora (1 albo 2). Przycisk M w trybie "equalizer"
     /// przelacza wlasnie te wartosc.
     var equaliserSlot: Int?
     /// Preset zajmujacy slot 2. Slot 1 to zawsze fabryczne brzmienie Marshalla.
     var equaliserPreset: MajorV.EqualiserPreset?
+    /// Bogatszy stan z charakterystyki SIG 2BED - zrodlo informacji o ladowaniu.
+    var batteryStatus: MajorV.BatteryStatus?
     /// Surowy bajt charge_status z GET_CHARGE_INFO. Znaczenia wartosci innych
     /// niz zero jeszcze nie ustalilismy - traktujemy niezerowe jako ladowanie.
     var chargeStatus: UInt8?
-    var isCharging: Bool { (chargeStatus ?? 0) != 0 }
+    /// 2BED jest wiarygodniejsze niz bajt z RACE - bierzemy je, gdy jest.
+    var isCharging: Bool { batteryStatus?.charging ?? ((chargeStatus ?? 0) != 0) }
 
     // Editable settings
     var interactionSounds: Bool?
@@ -75,12 +82,27 @@ final class DeviceStore {
     /// Poziom baterii nie jest dostepny przez GATT: standardowe 2A19 zwraca zero,
     /// a 2BED ma flage "brak poziomu". Sluchawki podaja go dopiero na zapytanie
     /// kanalem RACE - tak samo, jak robi to oficjalna aplikacja.
+    func reopenRaceChannel() async { await openRaceChannel() }
+
     private func openRaceChannel() async {
         ble.onNotification = { [weak self] uuid, data in
-            guard uuid == Race.notifyCharacteristic,
-                  let frame = Race.parse(data) else { return }
-            self?.raceInbox[frame.id] = frame.payload
+            guard let self else { return }
+            switch uuid {
+            case Race.notifyCharacteristic:
+                if let frame = Race.parse(data) { self.raceInbox[frame.id] = frame.payload }
+            case MajorV.Info.batteryLevel:
+                if let b = data.first, b > 0 { self.batteryPercent = Int(b) }
+            case MajorV.Info.batteryLevelStatus:
+                self.batteryStatus = Decode.batteryStatus(data)
+            default:
+                break
+            }
         }
+        // Serwis baterii przyjmuje subskrypcje - korzystamy, zamiast odpytywac.
+        try? await ble.subscribe(MajorV.Info.batteryLevel, in: MajorV.batteryService)
+        try? await ble.subscribe(MajorV.Info.batteryLevelStatus, in: MajorV.batteryService)
+
+        guard ble.hasAirohaChannel else { raceReady = false; return }
         do {
             try await ble.subscribe(Race.notifyCharacteristic, in: Race.service)
             raceReady = true
@@ -161,13 +183,17 @@ final class DeviceStore {
 
     /// Everything that can change while the app is open.
     func refreshDynamic() async {
-        // Najpierw standardowa charakterystyka - na wypadek, gdyby kiedys zaczela
-        // dzialac. Jesli zwraca zero (a na Major V zwraca), pytamy kanalem RACE.
+        // 2A19 na Major V zawsze zwraca zero - potwierdzone, to wada firmware,
+        // nie kwestia wyboru peryferala. Czytamy je mimo to, bo gdyby przyszla
+        // poprawka firmware, zadziala bez zmian w kodzie. Realnym zrodlem jest RACE.
         if let d = await ble.read(MajorV.Info.batteryLevel, in: MajorV.batteryService),
            let b = d.first, b > 0 {
             batteryPercent = Int(b)
         } else {
             await refreshBatteryViaRace()
+        }
+        if let d = await ble.read(MajorV.Info.batteryLevelStatus, in: MajorV.batteryService) {
+            batteryStatus = Decode.batteryStatus(d)
         }
         await refreshChargeViaRace()
         if let d = await ble.read(MajorV.Char.interactionSounds.uuid) {
@@ -187,6 +213,12 @@ final class DeviceStore {
         }
         if let d = await ble.read(MajorV.Char.volume.uuid), let v = d.first {
             volume = Int(v)
+        }
+        if let d = await ble.read(MajorV.Char.audioControl.uuid) {
+            isPlaying = Decode.isPlaying(d)
+        }
+        if let d = await ble.read(MajorV.Char.audioSource.uuid) {
+            audioSource = Decode.audioSource(d)
         }
         if let d = await ble.read(MajorV.Char.equaliser.uuid),
            let eq = Decode.equaliser(d) {

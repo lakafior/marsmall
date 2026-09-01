@@ -100,7 +100,7 @@ final class BLEClient: NSObject {
         candidates.sort { ($0.name ?? "").localizedCaseInsensitiveContains("major")
                        && !($1.name ?? "").localizedCaseInsensitiveContains("major") }
 
-        for p in candidates where await attach(p) { return }
+        if await attachBest(from: candidates) { return }
 
         // Nothing connected matched — scan the air.
         seen.removeAll()
@@ -112,12 +112,34 @@ final class BLEClient: NSObject {
             ($0.name ?? "").localizedCaseInsensitiveContains("major")
             && !($1.name ?? "").localizedCaseInsensitiveContains("major")
         }
-        for p in scanned where await attach(p) { return }
+        if await attachBest(from: scanned) { return }
 
         state = .failed("""
         Major V not found. Switch the headphones on and pair them with this iPhone \
         in Settings › Bluetooth — without pairing the headphones refuse every read.
         """)
+    }
+
+    /// Major V pokazuje sie w iOS dwa razy - jako "MAJOR V" (klasyczne) i
+    /// "MAJOR V [LE]". Trafienie na wpis bez kanalu Airohy oznacza brak baterii
+    /// i sondy, wiec przechodzimy calą listę i wybieramy ten z kompletem serwisow.
+    /// Wpis z samym Zoundem bierzemy dopiero, gdy nie ma nic lepszego.
+    private func attachBest(from list: [CBPeripheral]) async -> Bool {
+        var fallback: CBPeripheral?
+        for p in list {
+            guard await attach(p) else { continue }
+            if hasAirohaChannel { return true }
+            fallback = p
+            central.cancelPeripheralConnection(p)
+            entries.removeAll()
+        }
+        guard let fallback else { return false }
+        return await attach(fallback)
+    }
+
+    /// Czy podlaczony peryferal wystawia kanal RACE Airohy.
+    var hasAirohaChannel: Bool {
+        entries.contains { $0.ch.uuid == Race.notifyCharacteristic }
     }
 
     /// Connects, discovers everything, and keeps the peripheral only if it really
@@ -170,10 +192,10 @@ final class BLEClient: NSObject {
             group.addTask { @MainActor in
                 await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
                     self.discoveryWaiter = c
-                    p.discoverServices([MajorV.zoundService,
-                                        MajorV.deviceInfoService,
-                                        MajorV.batteryService,
-                                        Race.service])
+                    // Bez filtra: iOS buforuje baze GATT sparowanego urzadzenia
+                    // i filtrowane odkrywanie potrafi pominac serwis, ktorego
+                    // akurat nie ma w cache - tak gubil sie kanal Airohy.
+                    p.discoverServices(nil)
                 }
             }
             group.addTask {

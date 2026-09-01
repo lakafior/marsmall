@@ -64,6 +64,19 @@ enum Decode {
         return (Int(d[d.startIndex + 2]) + 1, preset)
     }
 
+    /// `01` playing, `00` paused. Zmierzone; pozostale wartosci niezaobserwowane.
+    static func isPlaying(_ d: Data) -> Bool? {
+        d.first.map { $0 == 1 }
+    }
+
+    static func audioSource(_ d: Data) -> MajorV.AudioSource? {
+        d.first.flatMap(MajorV.AudioSource.init(rawValue:))
+    }
+
+    static func batteryStatus(_ d: Data) -> MajorV.BatteryStatus? {
+        MajorV.BatteryStatus(d)
+    }
+
     static func text(_ d: Data) -> String {
         String(decoding: d, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -110,4 +123,10 @@ enum Encode {
     static func equaliserPreset(_ preset: MajorV.EqualiserPreset) -> Data {
         Data([0x01, 0x01, preset.rawValue])
     }
+}
+
+extension Array {
+    /// Bezpieczny indeks - tablice mapujace wartosci z protokolu bywaja krotsze
+    /// niz zakres, ktory pole moze przyjac.
+    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }

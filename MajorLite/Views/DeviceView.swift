@@ -9,7 +9,6 @@ struct DeviceView: View {
     var body: some View {
         List {
             Section { HeroCard() }
-                .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
 
@@ -80,6 +79,12 @@ struct DeviceView: View {
             }
             .disabled(store.batteryPreservation == nil)
 
+            if let level = store.batteryPreservation {
+                Text(level.caption)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Button {
                 Task {
                     findingMe.toggle()
@@ -91,8 +96,8 @@ struct DeviceView: View {
             }
             .disabled(!store.raceReady)
 
-            if let level = store.batteryPreservation {
-                Text(level.caption)
+            if !store.raceReady {
+                Text("Battery and Find my headphones need the Airoha channel, which is not open on this connection. Pull down to refresh, or reconnect.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -170,61 +175,124 @@ struct DeviceView: View {
 
 // MARK: - Hero
 
-/// Battery, and whatever the headphones report as now playing.
+/// Battery, volume and whatever the headphones report as now playing.
 private struct HeroCard: View {
     @Environment(DeviceStore.self) private var store
 
     var body: some View {
-        GlassEffectContainer(spacing: 16) {
-            VStack(spacing: 18) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
+        GlassEffectContainer(spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
+                header
+                if hasTrack { nowPlaying }
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        }
+        .animation(.smooth, value: store.batteryPercent)
+        .animation(.smooth, value: store.nowPlaying[1])
+    }
+
+    // MARK: - Battery and volume
+    //
+    // Nazwa urzadzenia i informacja o ladowaniu maja wlasny wiersz. Gdy siedzialy
+    // w jednej linii z procentem, dluzsze napisy ("MAJOR V [LE]", "Charging
+    // wirelessly") sciskaly go i lamaly na dwie linie.
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(store.ble.deviceName ?? "Major V")
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 8)
+                if let note = store.batteryStatus?.summary {
+                    Text(note)
+                        .foregroundStyle(store.isCharging ? .green : .orange)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                }
+            }
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(.secondary)
+
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
                     Image(systemName: store.isCharging ? "battery.100percent.bolt" : batterySymbol)
-                        .font(.title2)
+                        .font(.title3)
                         .foregroundStyle(store.isCharging ? .green : batteryTint)
                         .symbolEffect(.pulse, isActive: store.isCharging)
                     Text(store.batteryPercent.map { "\($0)%" } ?? "—")
-                        .font(.system(size: 44, weight: .semibold, design: .rounded))
+                        .font(.system(size: 34, weight: .semibold, design: .rounded))
                         .contentTransition(.numericText())
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text(store.ble.deviceName ?? "Major V")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        if store.isCharging {
-                            Text("Charging")
-                                .font(.caption)
-                                .foregroundStyle(.green)
-                        }
-                        if let v = store.volume {
-                            Label("\(v)", systemImage: "speaker.wave.2.fill")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
+                        .lineLimit(1)
+                        .fixedSize()
                 }
 
-                if let title = store.nowPlaying[1], !title.isEmpty {
-                    Divider().opacity(0.4)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(title)
-                            .font(.callout.weight(.medium))
-                            .lineLimit(2)
-                        if let subtitle = store.nowPlaying[2], !subtitle.isEmpty {
-                            Text(subtitle)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
+                if let v = store.volume {
+                    Divider().frame(height: 22)
+                    // Jawny HStack zamiast Label: w wierszu listy Label potrafi
+                    // przejac styl ze srodowiska i zwinac sie do samej ikony.
+                    HStack(spacing: 5) {
+                        Image(systemName: "speaker.wave.2.fill")
+                        Text("\(v)")
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
+                }
+
+                if let src = store.audioSource {
+                    Divider().frame(height: 22)
+                    HStack(spacing: 5) {
+                        Image(systemName: src.symbol)
+                        Text(src.title)
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(src == .bluetooth ? .secondary : Color.accentColor)
+                    .lineLimit(1)
+                    .fixedSize()
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    // MARK: - Now playing
+
+    private var hasTrack: Bool { !(store.nowPlaying[1] ?? "").isEmpty }
+
+    private var nowPlaying: some View {
+        HStack(spacing: 12) {
+            Image(systemName: (store.isPlaying ?? false) ? "waveform" : "pause.fill")
+                .font(.title3)
+                .symbolEffect(.variableColor.iterative, isActive: store.isPlaying ?? false)
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(Color.accentColor.gradient, in: .rect(cornerRadius: 11))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(store.nowPlaying[1] ?? "")
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+                if let artist = store.nowPlaying[2], !artist.isEmpty {
+                    Text(artist)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                if let extra = store.nowPlaying[3], !extra.isEmpty {
+                    Text(extra)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
                 }
             }
-            .padding(20)
-            .glassEffect(.regular, in: .rect(cornerRadius: 26))
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .animation(.smooth, value: store.batteryPercent)
+        .padding(.top, 2)
     }
 
     private var batterySymbol: String {

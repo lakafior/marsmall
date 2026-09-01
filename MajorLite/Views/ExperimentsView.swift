@@ -44,6 +44,13 @@ struct ExperimentsView: View {
             }
             .disabled(probing || !store.raceReady)
 
+            if !store.raceReady {
+                Button("Reopen Airoha channel", systemImage: "arrow.clockwise") {
+                    Task { probing = true; await store.reopenRaceChannel(); probing = false }
+                }
+                .disabled(probing)
+            }
+
             ForEach(probe, id: \.self) { line in
                 Text(line)
                     .font(.caption2.monospaced())
@@ -59,7 +66,7 @@ struct ExperimentsView: View {
             Text("Chip capabilities")
         } footer: {
             if !store.raceReady {
-                Text("The Airoha channel is not open, so this cannot run.")
+                Text("The Airoha channel is not open. It lives on a second GATT server the headphones expose alongside the main one; if the app attached to the wrong one, reconnecting usually fixes it.")
             }
         }
     }
