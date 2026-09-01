@@ -249,9 +249,14 @@ final class BLEClient: NSObject {
         return value
     }
 
-    func write(_ data: Data, to uuid: CBUUID, in service: CBUUID? = nil) async throws {
+    func write(_ data: Data, to uuid: CBUUID, in service: CBUUID? = nil,
+               withoutResponse forceNoResponse: Bool = false) async throws {
         guard let (_, ch) = find(uuid, in: service), let p = peripheral else {
             throw BLEFailure.notConnected
+        }
+        if forceNoResponse, ch.properties.contains(.writeWithoutResponse) {
+            p.writeValue(data, for: ch, type: .withoutResponse)
+            return
         }
         guard ch.properties.contains(.write) else {
             p.writeValue(data, for: ch, type: .withoutResponse)

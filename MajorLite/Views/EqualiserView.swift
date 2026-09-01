@@ -61,7 +61,7 @@ struct EqualiserView: View {
             } header: {
                 Text("Slot 2")
             } footer: {
-                Text("Slot 2 can hold any of these, including Marshall's own tuning. Custom exposes five bands — 160 Hz, 400 Hz, 1 kHz, 2.5 kHz and 6.25 kHz — but editing them is not implemented yet; selecting it keeps whatever the official app last stored.")
+                Text("Slot 2 can hold any of these, including Marshall's own tuning. The five Custom bands still have to be set in the official Marshall app — see the note in EqualiserMath.swift for why.")
             }
         }
         .navigationTitle("Equaliser")

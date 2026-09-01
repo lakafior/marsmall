@@ -14,6 +14,12 @@ final class DeviceStore {
 
     let ble = BLEClient()
 
+    init() {
+        let saved = UserDefaults.standard.array(forKey: "customGains") as? [Double]
+        customGains = saved?.count == MajorV.equaliserBands.count
+            ? saved! : Array(repeating: 0, count: MajorV.equaliserBands.count)
+    }
+
     // Read-only information
     var model: String?
     var firmware: String?
@@ -313,6 +319,44 @@ final class DeviceStore {
                 lastError = "The headphones did not apply the change."
             }
         }
+    }
+
+    // MARK: - Wlasny equalizer
+    //
+    // Wysylamy WYLACZNIE komende 0x0E2B, ktora dziala na zywo. Utrwalenie to
+    // osobna komenda (UPDATE_NVKEY) i ta aplikacja jej nigdy nie wysyla - dlatego
+    // nic tu nie moze zostac trwale zapisane zle. Ustawienie znika po wylaczeniu
+    // sluchawek i to jest celowe.
+
+    /// Wzmocnienia pieciu pasm w dB. Urzadzenie ich nie raportuje, wiec trzymamy
+    /// wlasna kopie i zapamietujemy miedzy uruchomieniami.
+    var customGains: [Double] {
+        didSet { UserDefaults.standard.set(customGains, forKey: "customGains") }
+    }
+
+    /// Wysyla biezace ustawienie pasm. Write Command bez odpowiedzi - tak samo
+    /// jak robi to oficjalna aplikacja.
+    @discardableResult
+    func applyCustomEqualiser() async -> Bool {
+        guard raceReady else {
+            lastError = "The Airoha channel is not open."
+            return false
+        }
+        let packet = Race.packet(id: Race.PEQ_BANDS,
+                                 payload: [UInt8](EqualiserMath.payload(for: customGains)))
+        do {
+            try await ble.write(packet, to: Race.writeCharacteristic,
+                                in: Race.service, withoutResponse: true)
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
+    }
+
+    func resetCustomEqualiser() async {
+        customGains = Array(repeating: 0, count: MajorV.equaliserBands.count)
+        await applyCustomEqualiser()
     }
 
     // MARK: - Migawka i porownanie

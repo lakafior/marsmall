@@ -220,6 +220,23 @@ enum MajorV {
         var hex: String { String(format: "0x%02X", rawValue) }
     }
 
+    // MARK: - Custom equaliser
+
+    /// The five bands the hardware exposes, with the Q the official app uses.
+    /// Read straight off the wire: frequency and Q arrive as plain numbers.
+    static let equaliserBands: [(frequency: Double, q: Double)] = [
+        (160, 0.7), (400, 0.7), (1000, 1.0), (2500, 1.0), (6250, 1.0),
+    ]
+
+    /// Gain limits observed in the official app.
+    static let equaliserGainRange: ClosedRange<Double> = -6...6
+
+    static func bandTitle(_ frequency: Double) -> String {
+        frequency >= 1000 ? "\(String(format: "%.2f", frequency / 1000)) kHz"
+                            .replacingOccurrences(of: ".00", with: "")
+                          : "\(Int(frequency)) Hz"
+    }
+
     // MARK: - Audio source
 
     /// Which input is playing. Values come from the protocol-level enum in the app

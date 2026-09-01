@@ -59,6 +59,20 @@ enum Race {
     }
     /// Request `[cap_status = 0][id = 1]`, response `[status][id][data…]`.
     static let AUDIO_FEATURE_CAPABILITY: UInt16 = 0x0E30
+    /// Five-band parametric EQ, in plain units — **not in the command catalogue**,
+    /// its structure was recovered by capturing what the official app sends.
+    ///
+    ///     [00 × 5]
+    ///     [01 02][freq ×100][gain ×100][bandwidth ×100][Q ×100]   × 5 bands, i32le
+    ///     [00 × 90]
+    ///     [headroom ×100][headroom ×100]                          u32le
+    ///
+    /// **Not sufficient on its own.** Measured: the headphones accept it and report
+    /// the new band values, but the sound does not change — the DSP also wants
+    /// `PEQ_REALTIME` (`0x0E03`) with computed coefficients, which is not decoded.
+    /// Nothing in this app sends either; the definition is kept for the record.
+    static let PEQ_BANDS: UInt16 = 0x0E2B
+
     /// Turns firmware-pushed notifications on. Request `[on_off]`.
     static let ENABLE_FW_NOTIFY: UInt16 = 0x0006
 
