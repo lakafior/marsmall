@@ -78,7 +78,7 @@ struct CustomEqualiserView: View {
             } footer: {
                 Text("""
                 If you still hear no difference, the coefficient block really is \
-                required and this is as far as it goes — see NOTES.md.
+                required and this is as far as it goes — see docs/PROTOCOL.md.
 
                 To undo everything: switch the headphones off and on, or pick any \
                 other preset on the Equaliser screen.

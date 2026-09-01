@@ -1,0 +1,3 @@
+#!/bin/bash
+# Skrot: ./mr scan --seconds 8
+exec "$(dirname "$0")/marshall-recon.app/Contents/MacOS/marshall-recon" "$@"

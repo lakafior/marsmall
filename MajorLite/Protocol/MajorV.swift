@@ -7,7 +7,7 @@ import CoreBluetooth
 /// official app binary, byte formats confirmed by measurement against real hardware
 /// (Major V, firmware 6.4.9, Airoha AB156x).
 ///
-/// See NOTES.md in the MarshallRecon tool for the full derivation.
+/// See docs/PROTOCOL.md for the full derivation.
 enum MajorV {
 
     // MARK: - Services

@@ -60,3 +60,16 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+.DS_Store
+
+# --- Marshall reverse engineering ---
+
+# Nagrania Bluetooth. Zawieraja numer seryjny sluchawek, adresy MAC telefonu
+# i urzadzen w poblizu. Repo jest prywatne, ale gdyby kiedys stalo sie publiczne,
+# te pliki nie powinny w nim byc. Leza lokalnie w captures/.
+captures/
+
+# Artefakty narzedzia rozpoznawczego
+tools/recon/.build/
+tools/recon/marshall-recon.app/

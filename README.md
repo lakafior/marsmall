@@ -5,7 +5,7 @@ no analytics, no Firebase, no account.
 
 Built on a protocol map recovered by reverse engineering the official app and
 confirmed by measurement against real hardware (firmware 6.4.9, Airoha AB156x).
-The derivation lives in `../MarshallRecon/NOTES.md`.
+The full derivation lives in [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
 
 ## What it does
 
@@ -79,3 +79,20 @@ and run on a device. Requires iOS 26.
 
 The simulator has no Bluetooth, so it will only ever show the "not connected"
 screen. Use the Xcode canvas previews in `Views/Previews.swift` to see the rest.
+
+## Repository layout
+
+| Path | What |
+|---|---|
+| `MajorLite/` | The iOS app |
+| `Icon/` | App icon source and the SVG renderer that produces the three variants |
+| `docs/PROTOCOL.md` | **The protocol reference.** Everything decoded about Major V — characteristics, byte formats, RACE commands, what was measured and what is inferred. |
+| `docs/PEQ-SESSION-PLAN.md` | Plan for the capture session that would finish the custom equaliser |
+| `tools/recon/` | macOS command-line BLE tool used to map the protocol: scan, dump, poll, snapshot, diff |
+| `tools/parse-pklg.py` | Reads raw PacketLogger captures. The text export truncates large packets; this does not. |
+| `tools/parse-packetlog.py` | Filters a text export down to the writes that matter |
+| `tools/analyse-peq.py` | Pairs equaliser commands with coefficient blocks and decodes them |
+| `captures/` | Bluetooth captures — **not in git**, they carry the serial number and MAC addresses |
+
+The decrypted Marshall app the protocol was recovered from is deliberately not
+here. It is Marshall's copyrighted binary; only the findings belong in this repo.
