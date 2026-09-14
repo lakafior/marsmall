@@ -1,5 +1,7 @@
 # MajorLite
 
+> **Disclaimer**: I will not continue this project, as my main goal was to reprogram M-Button which seems to be impossible, and since I bought more marshall hardware app with focus on Major series stopped to make sense. But I leave it here for anyone as it could be handy for your project.
+
 A small, native iOS app for the **Marshall Major V** — the settings that matter,
 no analytics, no Firebase, no account.
 
